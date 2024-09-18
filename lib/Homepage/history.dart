@@ -1,7 +1,8 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/widgets.dart';
-import 'history_detail.dart'; // Import your detail page
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fruait/model/model/history_model.dart';
+import 'history_detail.dart';
 
 class History extends StatefulWidget {
   const History({Key? key}) : super(key: key);
@@ -11,47 +12,100 @@ class History extends StatefulWidget {
 }
 
 class _HistoryState extends State<History> {
-  List<bool> switchStates = List.generate(5, (_) => false);
+  List<ImagesModel> _images = [];
+  late String _userId;
 
-  List<Map<String, String>> fruits = [
-    {"name": "Pisang", "icon": "assets/pisang.png", "status": "ripe", "image": "assets/background.png"},
-    {"name": "Jeruk", "icon": "assets/jeruk.png", "status": "half-ripe", "image": "assets/background.png"},
-    {"name": "Mangga", "icon": "assets/mangga.png", "status": "unripe" , "image": "assets/background.png"},
-    {"name": "Jambu", "icon": "assets/guava.png", "status": "ripe", "image": "assets/background"},
-    {"name": "Tomat", "icon": "assets/tomat.png", "status": "half-ripe", "image": "assets/background.png"},
-  ];
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  int? expandedIndex;
-
-  void toggleExpansion(int index) {
-    setState(() {
-      if (expandedIndex == index) {
-        expandedIndex = null;
-      } else {
-        expandedIndex = index;
-      }
-    });
+  @override
+  void initState() {
+    super.initState();
+    _getCurrentUserId();
   }
 
-  void navigateToDetailPage(String name, String image, String status, String icon) {
+  Future<void> _getCurrentUserId() async {
+    User? user = _auth.currentUser;
+    if (user != null) {
+      setState(() {
+        _userId = user.uid;
+      });
+      _fetchImages();
+    } else {
+      print("No user is currently logged in.");
+    }
+  }
+
+  Future<void> _fetchImages() async {
+    if (_userId.isEmpty) {
+      return;
+    }
+
+    try {
+      QuerySnapshot snapshot = await _firestore
+          .collection('images')
+          .where('user_id', isEqualTo: _userId)
+          .get();
+
+      List<ImagesModel> images = [];
+      for (var doc in snapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        print('Fetched data: $data'); // Debug print
+        ImagesModel model = ImagesModel.fromJson(data);
+        print('Created ImagesModel: $model'); // Debug print
+        images.add(model);
+      }
+      setState(() {
+        _images = images;
+      });
+      print('Total images fetched: ${_images.length}');
+    } catch (e) {
+      print('Error fetching images: $e');
+    }
+  }
+
+  String _getAssetImage(String? buah) {
+    print('Getting asset image for fruit: $buah'); // Debug print
+    if (buah == null || buah.isEmpty) {
+      return 'assets/background.png';
+    }
+    String assetPath;
+    switch (buah.trim().toLowerCase()) {
+      case 'banana':
+        assetPath = 'assets/pisang.png';
+        break;
+      case 'tomato':
+        assetPath = 'assets/tomat.png';
+        break;
+      case 'mangga':
+        assetPath = 'assets/mangga.png';
+        break;
+      case 'jambu':
+        assetPath = 'assets/jambu.png';
+        break;
+      case 'jeruk':
+        assetPath = 'assets/jeruk.png';
+        break;
+      default:
+        assetPath = 'assets/background.png';
+        break;
+    }
+    print('Selected asset path: $assetPath'); // Debug print
+    return assetPath;
+  }
+
+  void navigateToDetailPage(String url) {
+    print('Navigating to URL: $url');
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => HistoryDetailPage(
-          name: name,
-          image: image,
-          icon: icon,
-          status: status,
-        ),
+        builder: (context) => DetailPage(imageUrl: url),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    double screenWidth = MediaQuery.of(context).size.width;
-    double screenHeight = MediaQuery.of(context).size.height;
-
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
@@ -77,107 +131,40 @@ class _HistoryState extends State<History> {
                   ),
                 ),
                 Expanded(
-                  child: SingleChildScrollView(
-                    child: ListView.builder(
-                      physics: NeverScrollableScrollPhysics(),
-                      shrinkWrap: true,
-                      itemCount: fruits.length,
-                      itemBuilder: (context, index) {
-                        return Column(
-                          children: [
-                            GestureDetector(
-                              onTap: () => toggleExpansion(index),
-                              child: Container(
-                                padding: EdgeInsets.all(8),
-                                width: screenWidth * 0.9,
-                                height: screenHeight * 0.2,
-                                child: Card(
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    crossAxisAlignment: CrossAxisAlignment.center,
-                                    children: [
-                                      
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                           Image(
-                                        image:
-                                            AssetImage(fruits[index]["icon"]!),
-                                        width: 50,
-                                        height: 50,
-                                      ),
-                                      SizedBox(width: 10),
-                                      Text(
-                                        fruits[index]["name"]!,
-                                        style: TextStyle(
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                        ],
-                                      ),
-                                      Column(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Row(
-                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Text('data'),
-                                              Text('data')
-                                            ],
-                                          ),
-                                        ],
-                                      )
-                                     
-                                    ],
+                  child: ListView.builder(
+                    itemCount: _images.length,
+                    itemBuilder: (context, index) {
+                      final image = _images[index];
+                      print('Building item for fruit: ${image.buah}'); // Debug print
+                      return GestureDetector(
+                        onTap: () => navigateToDetailPage(image.url),
+                        child: Container(
+                          padding: EdgeInsets.all(8),
+                          child: Card(
+                            child: Column(
+                              children: [
+                                Image.asset(
+                                  _getAssetImage(image.buah),
+                                  width: 100,
+                                  height: 100,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    print('Error loading asset image: $error');
+                                    return Icon(Icons.error);
+                                  },
+                                ),
+                                Text(
+                                  image.buah ?? 'Unknown Fruit',
+                                  style: TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                              ),
+                              ],
                             ),
-                            Visibility(
-                              visible: expandedIndex == index,
-                              child: Column(
-                                children: [
-                                  AnimatedContainer(
-                                    duration: Duration(milliseconds: 300),
-                                    padding: EdgeInsets.only(
-                                      left: 16,
-                                      right: 16,
-                                      bottom: expandedIndex == index ? 16 : 0,
-                                    ),
-                                    child: GestureDetector(
-                                      onTap: () => navigateToDetailPage(
-                                        fruits[index]["name"]!,
-                                        fruits[index]["icon"]!,
-                                        fruits[index]["status"]!,
-                                        fruits[index]["image"]!,
-                                      ),
-                                      child: Card(
-                                        elevation: 3,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(15),
-                                        ),
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(8.0),
-                                          child: Text(
-                                            'Status: ${fruits[index]["status"]}',
-                                            style: TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
               ],

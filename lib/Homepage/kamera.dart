@@ -1,293 +1,314 @@
 import 'dart:io';
+import 'dart:typed_data';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:path/path.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:camera/camera.dart';
+import 'package:tflite_flutter/tflite_flutter.dart';
+import 'package:image/image.dart' as img;
 import 'package:external_path/external_path.dart';
-import 'package:flutter/material.dart';
-import 'package:fruait/Homepage/image.dart';
-import 'package:gap/gap.dart';
-import 'package:media_scanner/media_scanner.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class MainPage extends StatefulWidget {
   final List<CameraDescription> cameras;
-  const MainPage({super.key, required this.cameras});
+
+  const MainPage({Key? key, required this.cameras}) : super(key: key);
 
   @override
-  State<MainPage> createState() => _MainPageState();
+  _MainPageState createState() => _MainPageState();
 }
 
 class _MainPageState extends State<MainPage> {
-  late CameraController cameraController;
-  late Future<void> cameraValue;
-  List<File> imagesList = [];
-  bool isFlashOn = false;
-  bool isRearCamera = true;
+  late CameraController _cameraController;
+  late Future<void> _initializeControllerFuture;
+  File? _image;
+  late Interpreter _interpreter;
+  List<String> _labels = ["Banana", "Orange", "Pen", "Sticky Notes"];
+  bool _isRearCamera = true;
+  bool _isFlashOn = false;
+  List<File> _imagesList = [];
+  String _result = "";
+  List<double> _confidence = [];
+  int imageSize = 224;
 
-  Future<File> saveImage(XFile image) async {
-    final downlaodPath = await ExternalPath.getExternalStoragePublicDirectory(
+  @override
+  void initState() {
+    super.initState();
+    _initializeCamera();
+    _loadModel();
+  }
+
+  Future<void> _initializeCamera() async {
+    _cameraController = CameraController(
+      widget.cameras[0],
+      ResolutionPreset.medium,
+    );
+    _initializeControllerFuture = _cameraController.initialize();
+  }
+
+  Future<String> uploadImageToStorage(File imageFile) async {
+    String fileName = basename(imageFile.path);
+    Reference storageReference = FirebaseStorage.instance.ref().child('images/$fileName');
+
+    UploadTask uploadTask = storageReference.putFile(imageFile);
+    await uploadTask.whenComplete(() => null);
+
+    String downloadUrl = await storageReference.getDownloadURL();
+    return downloadUrl;
+  }
+
+  Future<void> _loadModel() async {
+    try {
+      _interpreter = await Interpreter.fromAsset('assets/model/model.tflite');
+      print("Model loaded successfully");
+    } catch (e) {
+      print("Error loading model: $e");
+    }
+  }
+
+  void _switchCamera() {
+    setState(() {
+      _isRearCamera = !_isRearCamera;
+      int cameraIndex = _isRearCamera ? 0 : 1;
+      _cameraController = CameraController(
+        widget.cameras[cameraIndex],
+        ResolutionPreset.medium,
+      );
+      _initializeControllerFuture = _cameraController.initialize();
+    });
+  }
+
+  void _toggleFlash() {
+    setState(() {
+      _isFlashOn = !_isFlashOn;
+      _cameraController.setFlashMode(_isFlashOn ? FlashMode.torch : FlashMode.off);
+    });
+  }
+
+  Future<File> _saveImage(XFile image) async {
+    final downloadPath = await ExternalPath.getExternalStoragePublicDirectory(
         ExternalPath.DIRECTORY_DOWNLOADS);
     final fileName = '${DateTime.now().millisecondsSinceEpoch}.png';
-    final file = File('$downlaodPath/$fileName');
-
+    final file = File('$downloadPath/$fileName');
+    
     try {
       await file.writeAsBytes(await image.readAsBytes());
-    } catch (_) {}
+    } catch (e) {
+      print('Error saving image: $e');
+    }
 
     return file;
   }
 
-  void takePicture() async {
-    XFile? image;
+  Future<void> saveImageDetailsToFirestore(String imageUrl, String buah, String result, String userId) async {
+    CollectionReference images = FirebaseFirestore.instance.collection('images');
 
-    if (cameraController.value.isTakingPicture ||
-        !cameraController.value.isInitialized) {
-      return;
-    }
-
-    if (isFlashOn == false) {
-      await cameraController.setFlashMode(FlashMode.off);
-    } else {
-      await cameraController.setFlashMode(FlashMode.torch);
-    }
-    image = await cameraController.takePicture();
-
-    if (cameraController.value.flashMode == FlashMode.torch) {
-      setState(() {
-        cameraController.setFlashMode(FlashMode.off);
-      });
-    }
-
-    final file = await saveImage(image);
-    setState(() {
-      imagesList.add(file);
+    await images.add({
+      'url': imageUrl,
+      'buah': buah,
+      'result': result,
+      'user_id': userId,
     });
-    MediaScanner.loadMedia(path: file.path);
-
-    // Navigate to the new page to display the image
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => ImageDisplayPage(imagePath: file.path),
-      ),
-    );
   }
 
-  void startCamera(int camera) {
-    cameraController = CameraController(
-      widget.cameras[camera],
-      ResolutionPreset.high,
-      enableAudio: false,
-    );
-    cameraValue = cameraController.initialize();
+  Future<void> _takePicture() async {
+    try {
+      await _initializeControllerFuture;
+      final image = await _cameraController.takePicture();
+      final savedImage = await _saveImage(image);
+
+      // Get the current authenticated user
+      User? user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        String userId = user.uid;
+        print('User ID before upload: $userId');
+        
+        // Upload the image to Firebase Storage
+        String imageUrl = await uploadImageToStorage(savedImage);
+
+        // Save the image details to Firestore
+        await saveImageDetailsToFirestore(imageUrl, 'Banana', _result, userId);
+
+        setState(() {
+          _image = savedImage;
+          _imagesList.add(savedImage);
+        });
+      } else {
+        print('User is not authenticated');
+      }
+    } catch (e) {
+      print('Error taking picture: $e');
+    }
   }
 
-  @override
-  void initState() {
-    startCamera(0);
-    super.initState();
-  }
-
-  Future<void> pickImageFromGallery() async {
+  Future<void> _pickImageFromGallery() async {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(source: ImageSource.gallery);
 
     if (pickedFile != null) {
-      final file = File(pickedFile.path);
-      setState(() {
-        imagesList.add(file);
-      });
+      File selectedImage = File(pickedFile.path);
 
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) => ImageDisplayPage(imagePath: file.path),
-        ),
-      );
+      // Get the current authenticated user
+      User? user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        String userId = user.uid;
+        print('User ID before upload: $userId');
+        
+        // Upload the image to Firebase Storage
+        String imageUrl = await uploadImageToStorage(selectedImage);
+
+        // Save the image details to Firestore
+        await saveImageDetailsToFirestore(imageUrl, 'Orange', _result, userId);
+
+        setState(() {
+          _image = selectedImage;
+          _imagesList.add(_image!);
+        });
+      } else {
+        print('User is not authenticated');
+      }
     }
   }
 
-  @override
-  void dispose() {
-    cameraController.dispose();
-    super.dispose();
+  Future<void> _classifyImage(File image) async {
+    img.Image? imageInput = img.decodeImage(await image.readAsBytes());
+    if (imageInput == null) return;
+
+    img.Image resizedImage = img.copyResize(imageInput, width: imageSize, height: imageSize);
+
+    var inputBuffer = Float32List(1 * imageSize * imageSize * 3);
+    var pixelIndex = 0;
+    for (var y = 0; y < imageSize; y++) {
+      for (var x = 0; x < imageSize; x++) {
+        var pixel = resizedImage.getPixel(x, y);
+        inputBuffer[pixelIndex++] = pixel.r / 255.0;  // Red
+        inputBuffer[pixelIndex++] = pixel.g / 255.0;  // Green
+        inputBuffer[pixelIndex++] = pixel.b / 255.0;  // Blue
+      }
+    }
+
+    var inputShape = [1, imageSize, imageSize, 3];
+    var outputShape = [1, 4];
+
+    var outputBuffer = List.filled(1 * 4, 0).reshape(outputShape);
+
+    _interpreter.run(inputBuffer.reshape(inputShape), outputBuffer);
+
+    // Convert the output to a list of doubles
+    var confidences = (outputBuffer[0] as List).map((v) => v as double).toList();
+
+    var maxPos = 0;
+    var maxConfidence = 0.0;
+    for (var i = 0; i < confidences.length; i++) {
+      if (confidences[i] > maxConfidence) {
+        maxConfidence = confidences[i];
+        maxPos = i;
+      }
+    }
+
+    setState(() {
+      _result = _labels[maxPos];
+      _confidence = confidences.map((conf) => conf * 100).toList();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
     return Scaffold(
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: const Color.fromRGBO(255, 255, 255, .7),
-        shape: const CircleBorder(),
-        onPressed: takePicture,
-        child: const Icon(
-          Icons.camera_alt,
-          size: 40,
-          color: Colors.black87,
-        ),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      body: Stack(
-        children: [
-          FutureBuilder(
-            future: cameraValue,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.done) {
-                return SizedBox(
-                  width: size.width,
-                  height: size.height,
-                  child: FittedBox(
-                    fit: BoxFit.cover,
-                    child: SizedBox(
-                      width: 100,
-                      child: CameraPreview(cameraController),
-                    ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: Stack(
+                children: [
+                  FutureBuilder<void>(
+                    future: _initializeControllerFuture,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.done) {
+                        return CameraPreview(_cameraController);
+                      } else {
+                        return Center(child: CircularProgressIndicator());
+                      }
+                    },
                   ),
-                );
-              } else {
-                return const Center(
-                  child: CircularProgressIndicator(),
-                );
-              }
-            },
-          ),
-          SafeArea(
-            child: Container(
-              height: 60,
-              child: Card(
-                color: Color.fromARGB(102, 0, 0, 0),
-                child: Align(
-                  alignment: Alignment.topRight,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 22),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              isFlashOn = !isFlashOn;
-                            });
-                          },
-                          child: Container(
-                            decoration: const BoxDecoration(
-                              color: Color.fromARGB(50, 0, 0, 0),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(10),
-                              child: isFlashOn
-                                  ? const Icon(
-                                      Icons.flash_on,
-                                      color: Colors.white,
-                                      size: 30,
-                                    )
-                                  : const Icon(
-                                      Icons.flash_off,
-                                      color: Colors.white,
-                                      size: 30,
-                                    ),
+                  Column(
+                    children: [
+                      Container(
+                        height: 60,
+                        child: Card(
+                          color: Color.fromARGB(102, 0, 0, 0),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 22),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                GestureDetector(
+                                  onTap: _toggleFlash,
+                                  child: Icon(
+                                    _isFlashOn ? Icons.flash_on : Icons.flash_off,
+                                    color: Colors.white,
+                                    size: 30,
+                                  ),
+                                ),
+                                GestureDetector(
+                                  onTap: _switchCamera,
+                                  child: Icon(
+                                    _isRearCamera ? Icons.camera_rear : Icons.camera_front,
+                                    color: Colors.white,
+                                    size: 30,
+                                  ),
+                                ),
+                                GestureDetector(
+                                  onTap: _pickImageFromGallery,
+                                  child: Icon(
+                                    Icons.photo_library,
+                                    color: Colors.white,
+                                    size: 30,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
-                        const Gap(10),
-                        GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              isRearCamera = !isRearCamera;
-                            });
-                            isRearCamera ? startCamera(0) : startCamera(1);
-                          },
-                          child: Container(
-                            decoration: const BoxDecoration(
-                              color: Color.fromARGB(50, 0, 0, 0),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(10),
-                              child: isRearCamera
-                                  ? const Icon(
-                                      Icons.camera_rear,
-                                      color: Colors.white,
-                                      size: 30,
-                                    )
-                                  : const Icon(
-                                      Icons.camera_front,
-                                      color: Colors.white,
-                                      size: 30,
-                                    ),
-                            ),
-                          ),
+                      ),
+                      SizedBox(height: 10),
+                      if (_image != null)
+                        Container(
+                          width: 370,
+                          height: 370,
+                          child: Image.file(_image!, fit: BoxFit.cover),
                         ),
-                        const Gap(10),
-                        GestureDetector(
-                          onTap: () {
-                            pickImageFromGallery();
-                          },
-                          child: Container(
-                            decoration: const BoxDecoration(
-                              color: Color.fromARGB(50, 0, 0, 0),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(10),
-                              child: const Icon(
-                                Icons.photo_library,
-                                color: Color.fromARGB(221, 255, 255, 255),
-                                size: 30,
-                              ),
-                            ),
-                          ),
-                        )
-                      ],
-                    ),
+                      SizedBox(height: 10),
+                      Text(
+                        'Classified as:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      SizedBox(height: 5),
+                      Text(
+                        _result,
+                        style: TextStyle(
+                          fontSize: 24,
+                          color: Colors.blue,
+                        ),
+                      ),
+                      SizedBox(height: 10),
+                      ElevatedButton(
+                        onPressed: _takePicture,
+                        child: Text('Capture Image'),
+                      ),
+                    ],
                   ),
-                ),
+                ],
               ),
             ),
-          ),
-          Align(
-            alignment: Alignment.bottomLeft,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 7, bottom: 75),
-                    child: Container(
-                      height: 100,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: imagesList.length,
-                        scrollDirection: Axis.horizontal,
-                        itemBuilder: (BuildContext context, int index) {
-                          return Padding(
-                            padding: const EdgeInsets.all(2),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(10),
-                              child: Image(
-                                height: 100,
-                                width: 100,
-                                opacity: const AlwaysStoppedAnimation(07),
-                                image: FileImage(
-                                  File(imagesList[index].path),
-                                ),
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                )
-              ],
-            ),
-          ),
-         
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "760794668113",
+    "project_id": "fruait-da351",
+    "storage_bucket": "fruait-da351.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:760794668113:android:d5b939805011414da8ec70",
+        "android_client_info": {
+          "package_name": "com.example.fruait"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyChVciAk7lpw0Gzcqu8h5hG662MYJgsF0k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
