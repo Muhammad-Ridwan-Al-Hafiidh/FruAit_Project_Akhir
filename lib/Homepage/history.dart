@@ -71,10 +71,10 @@ class _HistoryState extends State<History> {
     }
     String assetPath;
     switch (buah.trim().toLowerCase()) {
-      case 'banana':
+      case 'pisang':
         assetPath = 'assets/pisang.png';
         break;
-      case 'tomato':
+      case 'tomat':
         assetPath = 'assets/tomat.png';
         break;
       case 'mangga':

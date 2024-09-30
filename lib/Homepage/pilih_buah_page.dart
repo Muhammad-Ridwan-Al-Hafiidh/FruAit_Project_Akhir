@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:fruait/main_screen/main_screen.dart';
 
 class Home extends StatefulWidget {
-  const Home({super.key});
+  final Function(String, String) onModelSelected; // Callback to pass both model and fruit name
+  const Home({super.key, required this.onModelSelected});
 
   @override
   State<Home> createState() => _HomeState();
@@ -12,18 +12,22 @@ class _HomeState extends State<Home> {
   List<bool> switchStates = List.generate(5, (_) => false);
   
   List<Map<String, String>> fruits = [
-    {"name": "Pisang", "image": "assets/pisang.png"},
-    {"name": "jeruk", "image": "assets/jeruk.png"},
-    {"name": "Mangga", "image": "assets/mangga.png"},
-    {"name": "jambu", "image": "assets/guava.png"},
-    {"name": "tomat", "image": "assets/tomat.png"},
+    {"name": "Pisang", "image": "assets/pisang.png", "model": "assets/model/banana.tflite"},
+    {"name": "Jeruk", "image": "assets/jeruk.png", "model": "assets/model/orange.tflite"},
+    {"name": "Mangga", "image": "assets/mangga.png", "model": "assets/model/mango.tflite"},
+    {"name": "Jambu", "image": "assets/guava.png", "model": "assets/model/guava.tflite"},
+    {"name": "Tomat", "image": "assets/tomat.png", "model": "assets/model/tomato.tflite"},
   ];
 
   void toggleSwitch(int index) {
     setState(() {
+      // Update the switch states
       for (int i = 0; i < switchStates.length; i++) {
-        switchStates[i] = (i == index);
+        switchStates[i] = (i == index); // Only allow one switch on at a time
       }
+
+      // Pass the selected model and fruit name to the parent (MainScreen)
+      widget.onModelSelected(fruits[index]["model"]!, fruits[index]["name"]!);
     });
   }
 
@@ -74,11 +78,11 @@ class _HomeState extends State<Home> {
                                   Image(
                                     image: AssetImage(fruits[i]["image"]!),
                                     width: 50,
-                                    height: 50
+                                    height: 50,
                                   ),
                                   Text(
                                     fruits[i]["name"]!,
-                                    style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold)
+                                    style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
                                   ),
                                   Switch(
                                     activeColor: Colors.amber,
@@ -89,7 +93,13 @@ class _HomeState extends State<Home> {
                                     value: switchStates[i],
                                     onChanged: (value) {
                                       if (value) {
-                                        toggleSwitch(i);
+                                        toggleSwitch(i); // Update the selected fruit model and name
+                                      } else {
+                                        // Allow turning off the switch
+                                        setState(() {
+                                          switchStates[i] = false; // Set this switch off
+                                        });
+                                        widget.onModelSelected('', ''); // Clear the model and fruit name
                                       }
                                     },
                                   ),
@@ -98,7 +108,6 @@ class _HomeState extends State<Home> {
                             ),
                           ),
                         ),
-                      Text('data')
                     ],
                   ),
                 ),

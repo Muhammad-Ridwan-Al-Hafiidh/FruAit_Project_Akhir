@@ -42,4 +42,9 @@ flutter:
     - assets/background.png
     - assets/google.png
     - assets/model/model.tflite
+    - assets/model/banana.tflite
+    - assets/model/guava.tflite
+    - assets/model/orange.tflite
+    - assets/model/mango.tflite
+    - assets/model/tomato.tflite
     - assets/

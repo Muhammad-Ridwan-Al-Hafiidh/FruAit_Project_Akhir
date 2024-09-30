@@ -14,8 +14,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 class MainPage extends StatefulWidget {
   final List<CameraDescription> cameras;
+  final String modelPath; // Pass the selected model path
+  final String selectedFruit;
 
-  const MainPage({Key? key, required this.cameras}) : super(key: key);
+  const MainPage({Key? key, required this.cameras, required this.modelPath, required this.selectedFruit}) : super(key: key);
 
   @override
   _MainPageState createState() => _MainPageState();
@@ -26,13 +28,13 @@ class _MainPageState extends State<MainPage> {
   late Future<void> _initializeControllerFuture;
   File? _image;
   late Interpreter _interpreter;
-  List<String> _labels = ["Banana", "Orange", "Pen", "Sticky Notes"];
+  List<String> _labels = ["Matang", "Setengah Matang", "Belum Matang"];
   bool _isRearCamera = true;
   bool _isFlashOn = false;
   List<File> _imagesList = [];
   String _result = "";
   List<double> _confidence = [];
-  int imageSize = 224;
+  final int imageSize = 224;
 
   @override
   void initState() {
@@ -62,8 +64,8 @@ class _MainPageState extends State<MainPage> {
 
   Future<void> _loadModel() async {
     try {
-      _interpreter = await Interpreter.fromAsset('assets/model/model.tflite');
-      print("Model loaded successfully");
+      _interpreter = await Interpreter.fromAsset(widget.modelPath); // Use the selected model path
+      print("Model loaded successfully from: ${widget.modelPath}");
     } catch (e) {
       print("Error loading model: $e");
     }
@@ -93,7 +95,7 @@ class _MainPageState extends State<MainPage> {
         ExternalPath.DIRECTORY_DOWNLOADS);
     final fileName = '${DateTime.now().millisecondsSinceEpoch}.png';
     final file = File('$downloadPath/$fileName');
-    
+
     try {
       await file.writeAsBytes(await image.readAsBytes());
     } catch (e) {
@@ -103,34 +105,36 @@ class _MainPageState extends State<MainPage> {
     return file;
   }
 
-  Future<void> saveImageDetailsToFirestore(String imageUrl, String buah, String result, String userId) async {
+  Future<void> saveImageDetailsToFirestore(String imageUrl, String fruitName, String result, String userId) async {
     CollectionReference images = FirebaseFirestore.instance.collection('images');
 
     await images.add({
       'url': imageUrl,
-      'buah': buah,
+      'buah': fruitName,
       'result': result,
       'user_id': userId,
     });
   }
-
-  Future<void> _takePicture() async {
+ Future<void> _takePicture() async {
     try {
       await _initializeControllerFuture;
       final image = await _cameraController.takePicture();
       final savedImage = await _saveImage(image);
+
+      // Classify the image
+      await _classifyImage(savedImage);
 
       // Get the current authenticated user
       User? user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         String userId = user.uid;
         print('User ID before upload: $userId');
-        
+
         // Upload the image to Firebase Storage
         String imageUrl = await uploadImageToStorage(savedImage);
 
-        // Save the image details to Firestore
-        await saveImageDetailsToFirestore(imageUrl, 'Banana', _result, userId);
+        // Save the image details to Firestore with the selected fruit name
+        await saveImageDetailsToFirestore(imageUrl, widget.selectedFruit, _result, userId); // Use selectedFruit for buah
 
         setState(() {
           _image = savedImage;
@@ -155,13 +159,12 @@ class _MainPageState extends State<MainPage> {
       User? user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         String userId = user.uid;
-        print('User ID before upload: $userId');
-        
+
         // Upload the image to Firebase Storage
         String imageUrl = await uploadImageToStorage(selectedImage);
 
-        // Save the image details to Firestore
-        await saveImageDetailsToFirestore(imageUrl, 'Orange', _result, userId);
+        // Save the image details to Firestore with the selected fruit name
+        await saveImageDetailsToFirestore(imageUrl, widget.selectedFruit, _result, userId); // Use selectedFruit for buah
 
         setState(() {
           _image = selectedImage;
@@ -174,46 +177,48 @@ class _MainPageState extends State<MainPage> {
   }
 
   Future<void> _classifyImage(File image) async {
-    img.Image? imageInput = img.decodeImage(await image.readAsBytes());
-    if (imageInput == null) return;
+  img.Image? imageInput = img.decodeImage(await image.readAsBytes());
+  if (imageInput == null) return;
 
-    img.Image resizedImage = img.copyResize(imageInput, width: imageSize, height: imageSize);
+  img.Image resizedImage = img.copyResize(imageInput, width: imageSize, height: imageSize);
 
-    var inputBuffer = Float32List(1 * imageSize * imageSize * 3);
-    var pixelIndex = 0;
-    for (var y = 0; y < imageSize; y++) {
-      for (var x = 0; x < imageSize; x++) {
-        var pixel = resizedImage.getPixel(x, y);
-        inputBuffer[pixelIndex++] = pixel.r / 255.0;  // Red
-        inputBuffer[pixelIndex++] = pixel.g / 255.0;  // Green
-        inputBuffer[pixelIndex++] = pixel.b / 255.0;  // Blue
-      }
+  var inputBuffer = Float32List(1 * imageSize * imageSize * 3);
+  var pixelIndex = 0;
+  for (var y = 0; y < imageSize; y++) {
+    for (var x = 0; x < imageSize; x++) {
+      var pixel = resizedImage.getPixel(x, y);
+      inputBuffer[pixelIndex++] = pixel.r / 255.0;  // Red
+      inputBuffer[pixelIndex++] = pixel.g / 255.0;  // Green
+      inputBuffer[pixelIndex++] = pixel.b / 255.0;  // Blue
     }
-
-    var inputShape = [1, imageSize, imageSize, 3];
-    var outputShape = [1, 4];
-
-    var outputBuffer = List.filled(1 * 4, 0).reshape(outputShape);
-
-    _interpreter.run(inputBuffer.reshape(inputShape), outputBuffer);
-
-    // Convert the output to a list of doubles
-    var confidences = (outputBuffer[0] as List).map((v) => v as double).toList();
-
-    var maxPos = 0;
-    var maxConfidence = 0.0;
-    for (var i = 0; i < confidences.length; i++) {
-      if (confidences[i] > maxConfidence) {
-        maxConfidence = confidences[i];
-        maxPos = i;
-      }
-    }
-
-    setState(() {
-      _result = _labels[maxPos];
-      _confidence = confidences.map((conf) => conf * 100).toList();
-    });
   }
+
+  // Adjust input and output shapes based on your model's requirements
+  var inputShape = [1, imageSize, imageSize, 3];
+  var outputShape = [1, 3];  // Update this to [1, 3] to match the output shape returned by the model
+
+  var outputBuffer = List.filled(1 * 3, 0).reshape(outputShape);  // Adjust output buffer size to 3
+
+  // Run the interpreter with the updated shapes
+  _interpreter.run(inputBuffer.reshape(inputShape), outputBuffer);
+
+  // Convert the output to a list of doubles
+  var confidences = (outputBuffer[0] as List).map((v) => v as double).toList();
+
+  var maxPos = 0;
+  var maxConfidence = 0.0;
+  for (var i = 0; i < confidences.length; i++) {
+    if (confidences[i] > maxConfidence) {
+      maxConfidence = confidences[i];
+      maxPos = i;
+    }
+  }
+
+  setState(() {
+    _result = _labels[maxPos];
+    _confidence = confidences.map((conf) => conf * 100).toList();
+  });
+}
 
   @override
   Widget build(BuildContext context) {
@@ -269,44 +274,38 @@ class _MainPageState extends State<MainPage> {
                                     size: 30,
                                   ),
                                 ),
+                                GestureDetector(
+                                  onTap: _takePicture,
+                                  child: Icon(
+                                    Icons.camera,
+                                    color: Colors.white,
+                                    size: 30,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
                         ),
-                      ),
-                      SizedBox(height: 10),
-                      if (_image != null)
-                        Container(
-                          width: 370,
-                          height: 370,
-                          child: Image.file(_image!, fit: BoxFit.cover),
-                        ),
-                      SizedBox(height: 10),
-                      Text(
-                        'Classified as:',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      SizedBox(height: 5),
-                      Text(
-                        _result,
-                        style: TextStyle(
-                          fontSize: 24,
-                          color: Colors.blue,
-                        ),
-                      ),
-                      SizedBox(height: 10),
-                      ElevatedButton(
-                        onPressed: _takePicture,
-                        child: Text('Capture Image'),
                       ),
                     ],
                   ),
                 ],
               ),
             ),
+            if (_image != null) ...[
+              Center(
+                child: Container(
+                  height: 200,
+                  width: double.infinity,
+                  child: Image.file(
+                    _image!,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+              Text('Classification: $_result'),
+              Text('Confidence: ${_confidence.isNotEmpty ? _confidence.join(", ") : "N/A"}'),
+            ],
           ],
         ),
       ),

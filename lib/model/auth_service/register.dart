@@ -1,13 +1,11 @@
 import 'package:camera/camera.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:fruait/model/auth_service/firebase_auth_services.dart';
 import 'package:fruait/model/auth_service/firebase_controller/controller.dart';
 import 'package:fruait/model/auth_service/login.dart';
-import 'package:fruait/model/auth_service/toast.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

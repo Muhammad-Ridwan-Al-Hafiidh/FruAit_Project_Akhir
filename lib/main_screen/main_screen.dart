@@ -5,6 +5,7 @@ import 'package:fruait/Homepage/history.dart';
 import 'package:fruait/Homepage/kamera.dart';
 import 'package:fruait/Homepage/pilih_buah_page.dart';
 
+// MainScreen widget
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final cameras = await availableCameras();
@@ -22,6 +23,19 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int currentTab = 0;
   late PageController _pageController;
+
+  // Variable to store the selected model
+  String selectedModelPath = 'assets/model/banana.tflite'; // Default model
+  String selectedFruit = 'Pisang'; // Example selected fruit from the switch.
+
+  // Callback to handle model and fruit name selection
+  void onModelSelected(String model, String fruitName) {
+    setState(() {
+      selectedModelPath = model; // Update the model based on user selection in Home
+      selectedFruit = fruitName; // Update the fruit name
+    });
+  }
+
 
   @override
   void initState() {
@@ -117,7 +131,7 @@ class _MainScreenState extends State<MainScreen> {
         elevation: 3,
         onPressed: () {
           Navigator.of(context).push(
-            MaterialPageRoute(builder: (context) => MainPage(cameras: widget.cameras)),
+            MaterialPageRoute(builder: (context) => MainPage(cameras: widget.cameras, modelPath: selectedModelPath,selectedFruit: selectedFruit,)),
           );
         },
         shape: const CircleBorder(),
@@ -129,7 +143,7 @@ class _MainScreenState extends State<MainScreen> {
         controller: _pageController,
         onPageChanged: onPageChanged,
         children: [
-          Home(),
+          Home(onModelSelected: onModelSelected), // Pass the callback directly
           History(),
         ],
       ),
