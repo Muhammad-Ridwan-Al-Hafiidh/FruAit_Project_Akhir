@@ -4,6 +4,7 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:camera/camera.dart';
 import 'package:fruait/main_screen/main_screen.dart';
 import 'package:fruait/model/auth_service/register.dart';
+import 'package:fruait/model/auth_service/reset.dart';
 
 class LoginDulu extends StatefulWidget {
   final List<CameraDescription> cameras;
@@ -143,9 +144,9 @@ class _LoginDuluState extends State<LoginDulu> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
-                    onPressed: () {
-                      // Implement forgot password functionality
-                    },
+                   onPressed: () {
+                        Navigator.of(context).push(MaterialPageRoute(builder: (context) => ResetPass()));
+                      },
                     child: const Text(
                       "Forget Password?",
                       style: TextStyle(color: Colors.white54),

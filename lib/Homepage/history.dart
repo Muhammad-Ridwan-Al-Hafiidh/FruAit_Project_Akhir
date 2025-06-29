@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:fruait/model/model/history_model.dart';
+import 'package:intl/intl.dart';
 import 'history_detail.dart';
 
 class History extends StatefulWidget {
@@ -12,8 +12,9 @@ class History extends StatefulWidget {
 }
 
 class _HistoryState extends State<History> {
-  List<ImagesModel> _images = [];
+  List<Map<String, dynamic>> _images = [];
   late String _userId;
+  bool _isLoading = true;
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -30,145 +31,197 @@ class _HistoryState extends State<History> {
       setState(() {
         _userId = user.uid;
       });
-      _fetchImages();
-    } else {
-      print("No user is currently logged in.");
+      await _fetchImages();
     }
   }
 
   Future<void> _fetchImages() async {
-    if (_userId.isEmpty) {
-      return;
-    }
-
     try {
       QuerySnapshot snapshot = await _firestore
           .collection('images')
           .where('user_id', isEqualTo: _userId)
+          .orderBy('timestamp', descending: true)
           .get();
 
-      List<ImagesModel> images = [];
+      List<Map<String, dynamic>> images = [];
       for (var doc in snapshot.docs) {
         final data = doc.data() as Map<String, dynamic>;
-        print('Fetched data: $data'); // Debug print
-        ImagesModel model = ImagesModel.fromJson(data);
-        print('Created ImagesModel: $model'); // Debug print
-        images.add(model);
+        images.add({
+          'buah': data['buah'] ?? 'Unknown',
+          'result': data['result'] ?? 'Unknown',
+          'color': data['detected_color'] ?? 'Unknown',
+          'url': data['url'] ?? '',
+          'timestamp': data['timestamp']?.toDate() ?? DateTime.now(),
+        });
       }
+
       setState(() {
         _images = images;
+        _isLoading = false;
       });
-      print('Total images fetched: ${_images.length}');
     } catch (e) {
-      print('Error fetching images: $e');
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error fetching history: $e')),
+      );
     }
   }
 
-  String _getAssetImage(String? buah) {
-    print('Getting asset image for fruit: $buah'); // Debug print
-    if (buah == null || buah.isEmpty) {
-      return 'assets/background.png';
-    }
-    String assetPath;
-    switch (buah.trim().toLowerCase()) {
+  String _getAssetImage(String buah) {
+    switch (buah.toLowerCase()) {
       case 'pisang':
-        assetPath = 'assets/pisang.png';
-        break;
+        return 'assets/pisang.png';
       case 'tomat':
-        assetPath = 'assets/tomat.png';
-        break;
+        return 'assets/tomat.png';
       case 'mangga':
-        assetPath = 'assets/mangga.png';
-        break;
+        return 'assets/mangga.png';
       case 'jambu':
-        assetPath = 'assets/jambu.png';
-        break;
+        return 'assets/guava.png';
       case 'jeruk':
-        assetPath = 'assets/jeruk.png';
-        break;
+        return 'assets/jeruk.png';
       default:
-        assetPath = 'assets/background.png';
-        break;
+        return 'assets/background.png';
     }
-    print('Selected asset path: $assetPath'); // Debug print
-    return assetPath;
   }
 
-  void navigateToDetailPage(String url) {
-    print('Navigating to URL: $url');
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => DetailPage(imageUrl: url),
-      ),
-    );
+  Color _getStatusColor(String result) {
+    switch (result.toLowerCase()) {
+      case 'matang':
+        return Colors.green;
+      case 'setengah matang':
+        return Colors.orange;
+      case 'belum matang':
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           image: DecorationImage(
             image: AssetImage("assets/background.png"),
-            fit: BoxFit.fill,
+            fit: BoxFit.cover,
           ),
         ),
         child: SafeArea(
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: EdgeInsets.only(top: 10, bottom: 30),
-                  child: Text(
-                    'History Kematangan',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 37,
-                      fontWeight: FontWeight.bold,
-                    ),
+          child: Column(
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(top: 20, bottom: 30),
+                child: Text(
+                  'History Kematangan',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 30,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: _images.length,
-                    itemBuilder: (context, index) {
-                      final image = _images[index];
-                      print('Building item for fruit: ${image.buah}'); // Debug print
-                      return GestureDetector(
-                        onTap: () => navigateToDetailPage(image.url),
-                        child: Container(
-                          padding: EdgeInsets.all(8),
-                          child: Card(
-                            child: Column(
-                              children: [
-                                Image.asset(
-                                  _getAssetImage(image.buah),
-                                  width: 100,
-                                  height: 100,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    print('Error loading asset image: $error');
-                                    return Icon(Icons.error);
-                                  },
+              ),
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _images.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'No history found',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            itemCount: _images.length,
+                            itemBuilder: (context, index) {
+                              final item = _images[index];
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
-                                Text(
-                                  image.buah ?? 'Unknown Fruit',
-                                  style: TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.bold,
+                                child: InkWell(
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => DetailPage(
+                                        imageUrl: item['url'],
+                                        fruitName: item['buah'],
+                                        result: item['result'],
+                                        color: item['color'],
+                                        timestamp: item['timestamp'],
+                                      ),
+                                    ),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Row(
+                                      children: [
+                                        Image.asset(
+                                          _getAssetImage(item['buah']),
+                                          width: 80,
+                                          height: 80,
+                                          errorBuilder: (context, error, stackTrace) {
+                                            return const Icon(Icons.image, size: 80);
+                                          },
+                                        ),
+                                        const SizedBox(width: 16),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                item['buah'],
+                                                style: const TextStyle(
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Row(
+                                                children: [
+                                                  Container(
+                                                    width: 12,
+                                                    height: 12,
+                                                    decoration: BoxDecoration(
+                                                      color: _getStatusColor(item['result']),
+                                                      shape: BoxShape.circle,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  Text(
+                                                    item['result'],
+                                                    style: TextStyle(
+                                                      color: _getStatusColor(item['result']),
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                DateFormat('dd MMM yyyy - HH:mm').format(item['timestamp']),
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const Icon(Icons.chevron_right),
+                                      ],
+                                    ),
                                   ),
                                 ),
-                              ],
-                            ),
+                              );
+                            },
                           ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

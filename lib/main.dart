@@ -1,5 +1,7 @@
 import 'package:camera/camera.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart'; // untuk kIsWeb
+import 'package:sembast/sembast.dart';
+import 'package:sembast_web/sembast_web.dart';
 import 'package:flutter/material.dart';
 import 'package:fruait/splashscreen/splash_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -8,6 +10,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   if (kIsWeb) {
+    
     await Firebase.initializeApp(
       options: const FirebaseOptions(
         apiKey: "AIzaSyChVciAk7lpw0Gzcqu8h5hG662MYJgsF0k",
@@ -15,7 +18,9 @@ Future<void> main() async {
         messagingSenderId: "760794668113",
         projectId: "fruait-da351",
       ),
+       
     );
+ 
   } else {
     await Firebase.initializeApp();
   }

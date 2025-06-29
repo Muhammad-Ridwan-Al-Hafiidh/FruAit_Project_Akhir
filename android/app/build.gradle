@@ -19,7 +19,7 @@ def flutterVersionName = localProperties.getProperty('flutter.versionName', '1.0
 android {
     namespace "com.example.fruait"
     compileSdk flutter.compileSdkVersion
-    ndkVersion flutter.ndkVersion
+    ndkVersion '28.0.13004108'
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
@@ -35,9 +35,9 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.example.fruait"  // Make sure this is unique
+        applicationId "com.example.fruait"
         minSdkVersion 26
-        targetSdkVersion flutter.targetSdkVersion
+        targetSdk 35
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         multiDexEnabled true
@@ -46,8 +46,9 @@ android {
     buildTypes {
         release {
             signingConfig signingConfigs.debug // Replace with a proper release signing config
-            // Example for release:
-            // signingConfig signingConfigs.release
+            minifyEnabled false // Enable code shrinking and obfuscation
+            shrinkResources false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 }
@@ -57,20 +58,19 @@ flutter {
 }
 
 dependencies {
-    // Add necessary dependencies here
-    implementation 'org.tensorflow:tensorflow-lite:2.10.0' // Example TensorFlow Lite dependency
-    implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'com.google.android.material:material:1.11.0'
-    implementation 'com.google.firebase:firebase-bom:32.2.0'
+    implementation 'org.tensorflow:tensorflow-lite:2.13.0'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation platform('com.google.firebase:firebase-bom:33.9.0')
     implementation 'com.google.firebase:firebase-analytics'
     implementation 'com.android.support:multidex:1.0.3'
-    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'androidx.constraintlayout:constraintlayout:2.2.0'
     implementation 'org.tensorflow:tensorflow-lite-support:0.4.4'
     implementation 'org.tensorflow:tensorflow-lite-metadata:0.4.4'
     implementation 'androidx.multidex:multidex:2.0.1'
     testImplementation 'junit:junit:4.13.2'
-    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
 }
 
 apply plugin: 'com.google.gms.google-services'
